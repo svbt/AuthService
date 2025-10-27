@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # The Kafka topic initializer service.
+  # It waits for Kafka to be healthy and then creates the necessary topics.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      kafka_auth:
+        condition: service_healthy
+    entrypoint: >
+      bash -c "
+        # Wait until Kafka is ready, using the bootstrap-server defined in our Kafka service
+        cub kafka-ready -b kafka_auth:19093 1 20 &&
+        
+        # Create user.login topic
+        kafka-topics --create --if-not-exists \
+        --topic user.login \
+        --bootstrap-server kafka_auth:19093 \
+        --partitions 1 --replication-factor 1
+      "
+    networks:
+      - app-network
+
+  # The Python/FastAPI amazon authentication service
+  amazon:
+    build:
+      context: ./amazon
+      dockerfile: Dockerfile
+    container_name: amazon-auth
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./amazon:/app
+    env_file:
+      - ./amazon/.env
+    depends_on:
+      kafka_auth:
+        condition: service_healthy
+    networks:
+      - app-network
+
+
+  # The main Kafka broker service
+  kafka_auth:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka_auth
+    hostname: kafka_auth
+    ports:
+      - "9093:9093"
+      - "19093:19093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2182
+      # Defines listeners with names for internal and external access
+      KAFKA_LISTENERS: PLAINTEXT_INTERNAL://0.0.0.0:19093,PLAINTEXT_EXTERNAL://0.0.0.0:9093
+      # Advertises the correct hostname/IP for each listener
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_INTERNAL://kafka_auth:19093,PLAINTEXT_EXTERNAL://localhost:9093
+      # Maps listener names to their security protocol
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT
+      # Specifies which listener other brokers will use
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - ./data/kafka_auth:/var/lib/kafka/data
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server=kafka_auth:19093", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks:
+      - app-network
+
+  # The Zookeeper service for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2182
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2182:2182"
+    volumes:
+      - ./data/zookeeper:/var/lib/zookeeper
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'ruok' | nc localhost 2182"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
