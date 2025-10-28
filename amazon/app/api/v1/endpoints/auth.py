@@ -99,9 +99,10 @@ async def amazon_callback(
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error during Amazon OAuth flow: {str(e)}")
 
-@router.get("/verify")
+@router.get("/amazon/verify")
 async def verify_token_endpoint(token: str):
     """Verifies a JWT token."""
+    print("verify_token_endpoint: token = ", token)
     payload = verify_token(token)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
