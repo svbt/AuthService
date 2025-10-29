@@ -64,5 +64,21 @@ AuthService is written to test login authentication APIs for likes of Amazon.
 
         ![Alt text for the image](images/verify.png)
 
+    4. ### Verify on Kafka service
+    
+        `docker exec -it kafka_auth bash`
+
+        ```
+        [appuser@kafka_auth ~]$ kafka-topics --bootstrap-server kafka_auth:19093 --list
+        user.login
+        ```
+
+
+        ```
+        [appuser@kafka_auth ~]$ kafka-console-consumer --bootstrap-server kafka_auth:19093 --topic=user.login --from-beginning
+        {"user_id": "amzn1.account.AFSOLMOEB63WSMXYHVU7NBBLVTHA", "providers": ["amazon"], "timestamp": "2025-10-29T09:36:32.130081+00:00"}
+        ```
+
+
     4. #### Stop service
     `docker compose down`
